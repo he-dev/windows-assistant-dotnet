@@ -10,4 +10,4 @@ I've created this utility because some windows suck to behave rationally.
 # Features:
 - Can resize a window by the specified width & height factors.
 - Can place a window in the center of the screen.
-- Can send-key to the window like CTRL-SHIFT-PLUS to zoom-in Power Query's Advanced Edtior.
+- Can send keys to the window like CTRL-SHIFT-PLUS to zoom-in Power Query's Advanced Editor.
