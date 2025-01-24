@@ -29,6 +29,12 @@ internal class HookForm : Form
 
     private void HookForm_Load(object? sender, EventArgs e)
     {
+        var screen = Screen.PrimaryScreen.WorkingArea; // Get primary screen dimensions
+        this.Location = new Point(
+            (screen.Width - this.Width) / 2,
+            (screen.Height - this.Height) / 2);
+
+
         // Set up the hook when the form loads
         hook = Win32.SetWinEventHook(Win32.EVENT_OBJECT_CREATE, Win32.EVENT_OBJECT_CREATE, IntPtr.Zero, procDelegate, 0, 0, Win32.WINEVENT_OUTOFCONTEXT);
 

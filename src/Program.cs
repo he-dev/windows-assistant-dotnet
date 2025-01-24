@@ -21,7 +21,11 @@ internal class Program
         // Create a dummy form with a hidden window.
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
-        Application.Run(new HookForm(objectCreateOptions) { Visible = true });
+        Application.Run(new HookForm(objectCreateOptions)
+        {
+            Visible = true,
+            // StartPosition = FormStartPosition.CenterScreen // Does not work.
+        });
     }
 }
 
