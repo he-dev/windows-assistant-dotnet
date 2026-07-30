@@ -14,9 +14,9 @@ internal sealed class MatchWindow(ILogger<MatchWindow> logger, IOptions<WindowEv
 {
     private readonly IReadOnlyList<ObjectCreateOptions> options = options.Value.ObjectCreate;
 
-    public ObjectCreateOptions? Execute(IntPtr hWnd, int idObject)
+    public ObjectCreateOptions? FirstOrDefault(IntPtr hWnd, int idObject)
     {
-        // core: Only native window objects can represent configured targets.
+        // meta: Only native window objects can represent configured targets.
         if (hWnd == IntPtr.Zero || idObject != Win32.OBJID_WINDOW)
         {
             return null;
@@ -35,17 +35,17 @@ internal sealed class MatchWindow(ILogger<MatchWindow> logger, IOptions<WindowEv
             {
                 if (option.TitleRegex.IsMatch(title.ToString()))
                 {
-                    logger.LogInformation("Matched '{WindowTitle}'. Rule '{TitlePattern}'.", title.ToString(), option.TitlePattern);
+                    logger.LogInformation("Matched '{WindowTitle}' by '{TitlePattern}'.", title.ToString(), option.TitlePattern);
                     return option;
                 }
             }
             catch (RegexMatchTimeoutException)
             {
-                logger.LogWarning("Rule '{TitlePattern}' timed out.", option.TitlePattern);
+                logger.LogWarning("Window title pattern '{TitlePattern}' timed out.", option.TitlePattern);
             }
             catch (ArgumentException exception)
             {
-                logger.LogWarning("Rule '{TitlePattern}' skipped. '{Error}'", option.TitlePattern, exception.Message);
+                logger.LogWarning("Window title pattern '{TitlePattern}' skipped. '{Error}'", option.TitlePattern, exception.Message);
             }
         }
 

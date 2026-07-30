@@ -79,9 +79,9 @@ internal class HookForm : Form
     private void WinEventCallback(IntPtr hWinEventHook, uint eventType, IntPtr hWnd, int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
     {
         // core: Apply the first configured rule whose title pattern matches.
-        if (MatchWindow.Execute(hWnd, idObject) is { } options)
+        if (MatchWindow.FirstOrDefault(hWnd, idObject) is { } options)
         {
-            ResizeWindow.Execute(hWnd, options.SizeFactor.Width, options.SizeFactor.Height);
+            ResizeWindow.By(hWnd, options.SizeFactor.Width, options.SizeFactor.Height);
             _ = SendKeys.ExecuteAsync(hWnd, options.SendKeys);
         }
     }

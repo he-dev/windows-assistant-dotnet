@@ -13,7 +13,7 @@ internal sealed class ResizeWindow(ILogger<ResizeWindow> logger)
     /// <summary>
     /// Returns <see langword="true"/> when the native resize succeeds.
     /// </summary>
-    public bool Execute(IntPtr hWnd, double widthFactor, double heightFactor)
+    public bool By(IntPtr hWnd, double widthFactor, double heightFactor)
     {
         // util: Keep Win32 sizing and monitor-coordinate calculations out of callers.
         if (!Win32.GetWindowRect(hWnd, out var windowRect))
@@ -32,7 +32,7 @@ internal sealed class ResizeWindow(ILogger<ResizeWindow> logger)
         var errorCode = resized ? 0 : Marshal.GetLastWin32Error();
         if (resized)
         {
-            logger.LogInformation("Window resized to '{Width}×{Height}'.", newWidth, newHeight);
+            logger.LogInformation("Window resized by '{WidthFactor:0.##}×{HeightFactor:0.##}' to '{Width}×{Height}'.", widthFactor, heightFactor, newWidth, newHeight);
         }
         else
         {
