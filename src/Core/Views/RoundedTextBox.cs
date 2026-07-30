@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Drawing.Drawing2D;
+using Serilog.Events;
 using WindowsAssistant.Util.Serilog;
 
 namespace WindowsAssistant.Core.Views;
@@ -13,14 +14,15 @@ namespace WindowsAssistant.Core.Views;
 /// </remarks>
 internal sealed class RoundedTextBox : UserControl, ILogMessageObserver
 {
-    // core: The native text box retains standard text selection, rendering, and append behavior.
-    private readonly TextBox textBox = new()
+    // core: The native rich-text box retains text selection while allowing per-message colors.
+    private readonly RichTextBox textBox = new()
     {
         BackColor = Color.White,
         BorderStyle = BorderStyle.None,
+        DetectUrls = false,
         Dock = DockStyle.Fill,
-        Multiline = true,
         ReadOnly = true,
+        ScrollBars = RichTextBoxScrollBars.None,
         TabStop = false,
     };
 
@@ -48,7 +50,7 @@ internal sealed class RoundedTextBox : UserControl, ILogMessageObserver
         set => textBox.Text = value ?? string.Empty;
     }
 
-    public void OnLogMessage(string message)
+    public void OnLogMessage(string message, LogEventLevel level)
     {
         // meta: The observer owns its UI-thread boundary so the observable remains UI-agnostic.
         if (IsDisposed || Disposing)
@@ -60,7 +62,7 @@ internal sealed class RoundedTextBox : UserControl, ILogMessageObserver
         {
             try
             {
-                BeginInvoke(new Action(() => OnLogMessage(message)));
+                BeginInvoke(new Action(() => OnLogMessage(message, level)));
             }
             catch (InvalidOperationException)
             {
@@ -69,7 +71,20 @@ internal sealed class RoundedTextBox : UserControl, ILogMessageObserver
         }
         else
         {
+            textBox.SelectionStart = textBox.TextLength;
+            textBox.SelectionLength = 0;
+            textBox.SelectionColor = level switch
+            {
+                LogEventLevel.Verbose => Color.Gray,
+                LogEventLevel.Debug => Color.DimGray,
+                LogEventLevel.Information => Color.Black,
+                LogEventLevel.Warning => Color.DarkOrange,
+                LogEventLevel.Error => Color.Firebrick,
+                LogEventLevel.Fatal => Color.DarkRed,
+                _ => Color.Black,
+            };
             textBox.AppendText(message);
+            textBox.SelectionColor = textBox.ForeColor;
         }
     }
 

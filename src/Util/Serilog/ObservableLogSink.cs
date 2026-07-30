@@ -7,7 +7,7 @@ namespace WindowsAssistant.Util.Serilog;
 
 internal interface ILogMessageObserver
 {
-    void OnLogMessage(string message);
+    void OnLogMessage(string message, LogEventLevel level);
 }
 
 internal interface ILogMessageObservable
@@ -51,7 +51,7 @@ internal sealed class ObservableLogSink : ILogEventSink, ILogMessageObservable
         // core: Publish a stable snapshot so observers may unsubscribe during notification.
         foreach (var observer in subscribers)
         {
-            observer.OnLogMessage(message);
+            observer.OnLogMessage(message, logEvent.Level);
         }
     }
 

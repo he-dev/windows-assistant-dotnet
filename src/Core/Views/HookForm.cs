@@ -107,7 +107,7 @@ internal class HookForm : Form
         exitButton.Font = new Font("Segoe UI", 12F);
         exitButton.Location = new Point(12, 271);
         exitButton.Name = "exitButton";
-        exitButton.Size = new Size(674, 78);
+        exitButton.Size = new Size(971, 78);
         exitButton.TabIndex = 0;
         exitButton.Text = "Exit";
         exitButton.UseVisualStyleBackColor = true;
@@ -120,13 +120,13 @@ internal class HookForm : Form
         matchLogTextBox.Location = new Point(12, 12);
         matchLogTextBox.Name = "matchLogTextBox";
         matchLogTextBox.Padding = new Padding(7, 6, 7, 6);
-        matchLogTextBox.Size = new Size(674, 253);
+        matchLogTextBox.Size = new Size(971, 253);
         matchLogTextBox.TabIndex = 1;
         matchLogTextBox.TabStop = false;
         // 
         // HookForm
         // 
-        ClientSize = new Size(698, 354);
+        ClientSize = new Size(995, 354);
         Controls.Add(matchLogTextBox);
         Controls.Add(exitButton);
         Name = "HookForm";

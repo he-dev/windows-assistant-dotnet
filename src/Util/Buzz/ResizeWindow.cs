@@ -1,3 +1,5 @@
+using System.ComponentModel;
+using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging;
 using WindowsAssistant.Meta;
 
@@ -27,13 +29,15 @@ internal sealed class ResizeWindow(ILogger<ResizeWindow> logger)
         var newY = screenBounds.Top + (screenBounds.Height - newHeight) / 2;
 
         var resized = Win32.SetWindowPos(hWnd, IntPtr.Zero, newX, newY, newWidth, newHeight, 0);
+        var errorCode = resized ? 0 : Marshal.GetLastWin32Error();
         if (resized)
         {
             logger.LogInformation("Window resized to '{Width}×{Height}'.", newWidth, newHeight);
         }
         else
         {
-            logger.LogWarning("Window not resized.");
+            var error = new Win32Exception(errorCode);
+            logger.LogError("Window not resized. '{Error}' Error code '{ErrorCode}'.", error.Message, error.NativeErrorCode);
         }
 
         return resized;
