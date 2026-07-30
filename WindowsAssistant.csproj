@@ -22,4 +22,17 @@
     </None>
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="src\Util\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Update="src\Core\HookForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="src\Core\RoundedTextBox.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+  </ItemGroup>
+
 </Project>

@@ -168,8 +168,7 @@ internal class HookForm : Form
             }
             catch (ArgumentException exception)
             {
-                Console.WriteLine(
-                    $"Skipped invalid title pattern '{options.TitlePattern}': {exception.Message}");
+                Console.WriteLine($"Skipped invalid title pattern '{options.TitlePattern}': {exception.Message}");
             }
         }
 
