@@ -1,7 +1,7 @@
 ﻿using System.Runtime.InteropServices;
 using System.Text;
 
-namespace WindowsAssistant;
+namespace WindowsAssistant.Meta;
 
 internal static class Win32
 {
@@ -38,6 +38,9 @@ internal static class Win32
 
     [DllImport("user32.dll")]
     public static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    public static extern bool IsWindow(IntPtr hWnd);
 
     // RECT structure for holding window coordinates
     [StructLayout(LayoutKind.Sequential)]

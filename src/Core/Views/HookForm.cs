@@ -1,8 +1,9 @@
 ﻿using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
+using WindowsAssistant.Meta;
 
-namespace WindowsAssistant;
+namespace WindowsAssistant.Core.Views;
 
 // The client thread that calls SetWinEventHook must have a message loop in order to receive events.
 // https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwineventhook
@@ -12,6 +13,7 @@ internal class HookForm : Form
     private static IntPtr hook;
     private static Win32.WinEventDelegate procDelegate = null!; // This won't be null after the form loads.
     private IReadOnlyList<ObjectCreateOptions> ObjectCreateOptions { get; } = [];
+    internal RoundedTextBox LogTextBox => matchLogTextBox;
 
     public HookForm()
     {
@@ -32,9 +34,11 @@ internal class HookForm : Form
         // meta: Keep the controller form usable on whichever monitor Windows selects.
         var screen = Screen.FromControl(this).WorkingArea;
         StartPosition = FormStartPosition.CenterScreen;
-        Location = new Point(
+        Location = new Point
+        (
             screen.Left + (screen.Width - Width) / 2,
-            screen.Top + (screen.Height - Height) / 2);
+            screen.Top + (screen.Height - Height) / 2
+        );
 
         // meta: Install the hook only after the form's message loop is ready.
         hook = Win32.SetWinEventHook(Win32.EVENT_OBJECT_CREATE, Win32.EVENT_OBJECT_CREATE, IntPtr.Zero, procDelegate, 0, 0, Win32.WINEVENT_OUTOFCONTEXT);
@@ -58,6 +62,7 @@ internal class HookForm : Form
             Console.WriteLine("OBJECT_CREATE hook removed.");
             hook = IntPtr.Zero;
         }
+
         base.OnFormClosed(e);
     }
 
@@ -81,50 +86,69 @@ internal class HookForm : Form
         // core: Apply the first configured rule whose title pattern matches.
         if (FindMatchingRule(title.ToString()) is { } options)
         {
-            matchLogTextBox.AppendText(
-                $"{DateTime.Now:HH:mm:ss}  {title} -> {options.TitlePattern}{Environment.NewLine}");
+            matchLogTextBox.AppendText($"{DateTime.Now:HH:mm:ss}  {title} -> {options.TitlePattern}{Environment.NewLine}");
             Console.WriteLine($"Window created: {options.TitlePattern}");
 
-            //Thread.Sleep(1000);
+            ResizeWindow(hWnd, options.SizeFactor);
+            _ = SendKeysAsync(hWnd, options.SendKeys);
+        }
+    }
 
-            if (Win32.GetWindowRect(hWnd, out var windowRect))
+    /// <summary>
+    /// Resizes the target window and centers it within its current monitor's working area.
+    /// </summary>
+    private static void ResizeWindow(IntPtr hWnd, SizeFactorOptions sizeFactor)
+    {
+        if (!Win32.GetWindowRect(hWnd, out var windowRect))
+        {
+            Console.WriteLine($"Failed to read window bounds. Win32 error: {Marshal.GetLastWin32Error()}.");
+            return;
+        }
+
+        // core: Resize using the independent width and height factors.
+        var newWidth = (int)(windowRect.Width * sizeFactor.Width);
+        var newHeight = (int)(windowRect.Height * sizeFactor.Height);
+
+        // core: Center relative to the monitor containing the target window.
+        var screenBounds = Screen.FromHandle(hWnd).WorkingArea;
+        var newX = screenBounds.Left + (screenBounds.Width - newWidth) / 2;
+        var newY = screenBounds.Top + (screenBounds.Height - newHeight) / 2;
+
+        if (Win32.SetWindowPos(hWnd, IntPtr.Zero, newX, newY, newWidth, newHeight, 0))
+        {
+            Console.WriteLine($"Window resized by X={sizeFactor.Width:0.0} and Y={sizeFactor.Height:0.0}.");
+        }
+        else
+        {
+            Console.WriteLine($"Failed to resize window. Win32 error: {Marshal.GetLastWin32Error()}.");
+        }
+    }
+
+    /// <summary>
+    /// Sends the configured key sequences after their optional delays.
+    /// </summary>
+    /// <remarks>
+    /// This method owns all delayed work so the native WinEvent callback remains synchronous.
+    /// It catches its own exceptions because the callback intentionally does not await it.
+    /// </remarks>
+    private static async Task SendKeysAsync(IntPtr hWnd, IEnumerable<SendKeysOptions>? sendKeysOptions)
+    {
+        try
+        {
+            foreach (var keys in sendKeysOptions ?? [])
             {
-                // Original window size
-                var originalWidth = windowRect.Width;
-                var originalHeight = windowRect.Height;
-
-                // core: Resize using the independent width and height factors.
-                var newWidth = (int)(originalWidth * options.SizeFactor.Width);
-                var newHeight = (int)(originalHeight * options.SizeFactor.Height);
-
-                // core: Center relative to the monitor containing the target window.
-                var screenBounds = Screen.FromHandle(hWnd).WorkingArea;
-
-                // Calc the new position to center the window.
-                var newX = screenBounds.Left + (screenBounds.Width - newWidth) / 2;
-                var newY = screenBounds.Top + (screenBounds.Height - newHeight) / 2;
-
-                // Resize the window.
-                if (Win32.SetWindowPos(hWnd, IntPtr.Zero, newX, newY, newWidth, newHeight, 0))
+                // core: Give applications time to finish initializing the target window.
+                if (keys.DelayMs is > 0)
                 {
-                    Console.WriteLine($"Window resized by X={options.SizeFactor.Width:0.0} and Y={options.SizeFactor.Height:0.0}.");
+                    await Task.Delay(keys.DelayMs.Value);
                 }
-                else
+
+                if (!Win32.IsWindow(hWnd))
                 {
-                    Console.WriteLine($"Failed to resize window. Win32 error: {Marshal.GetLastWin32Error()}.");
+                    Console.WriteLine("Skipped configured keys because the window no longer exists.");
+                    return;
                 }
-            }
 
-            // This didn't work. At least not for the power-query editor.
-            // Win32.SendMessage(hwnd, Win32.WM_KEYDOWN, Win32.VK_SHIFT, IntPtr.Zero);
-            // Win32.SendMessage(hwnd, Win32.WM_KEYDOWN, Win32.VK_CONTROL, IntPtr.Zero);
-            // Win32.SendMessage(hwnd, Win32.WM_KEYDOWN, Win32.VK_PLUS, IntPtr.Zero);
-            // Win32.SendMessage(hwnd, Win32.WM_KEYUP, Win32.VK_PLUS, IntPtr.Zero);
-            // Win32.SendMessage(hwnd, Win32.WM_KEYUP, Win32.VK_CONTROL, IntPtr.Zero);
-            // Win32.SendMessage(hwnd, Win32.WM_KEYUP, Win32.VK_SHIFT, IntPtr.Zero);
-
-            if (options.SendKeys?.Any() == true)
-            {
                 // core: Never inject input unless the intended window owns the foreground.
                 if (!Win32.SetForegroundWindow(hWnd) || Win32.GetForegroundWindow() != hWnd)
                 {
@@ -132,12 +156,13 @@ internal class HookForm : Form
                     return;
                 }
 
-                foreach (var keys in options.SendKeys)
-                {
-                    SendKeys.SendWait(keys.Sequence);
-                    Console.WriteLine(keys.Description);
-                }
+                System.Windows.Forms.SendKeys.SendWait(keys.Sequence);
+                Console.WriteLine(keys.Description);
             }
+        }
+        catch (Exception exception)
+        {
+            Console.WriteLine($"Failed to send configured keys: {exception.Message}");
         }
     }
 
@@ -189,40 +214,39 @@ internal class HookForm : Form
         exitButton = new Button();
         matchLogTextBox = new RoundedTextBox();
         SuspendLayout();
-        //
+        // 
         // exitButton
-        //
-        exitButton.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+        // 
+        exitButton.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
         exitButton.Font = new Font("Segoe UI", 12F);
-        exitButton.Location = new Point(12, 12);
+        exitButton.Location = new Point(12, 271);
         exitButton.Name = "exitButton";
-        exitButton.Size = new Size(513, 183);
+        exitButton.Size = new Size(674, 78);
         exitButton.TabIndex = 0;
         exitButton.Text = "Exit";
         exitButton.UseVisualStyleBackColor = true;
         exitButton.Click += button1_Click;
-        //
+        // 
         // matchLogTextBox
-        //
+        // 
         matchLogTextBox.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-        matchLogTextBox.Location = new Point(12, 207);
+        matchLogTextBox.BackColor = Color.Transparent;
+        matchLogTextBox.Location = new Point(12, 12);
         matchLogTextBox.Name = "matchLogTextBox";
-        matchLogTextBox.Size = new Size(513, 92);
+        matchLogTextBox.Padding = new Padding(7, 6, 7, 6);
+        matchLogTextBox.Size = new Size(674, 253);
         matchLogTextBox.TabIndex = 1;
         matchLogTextBox.TabStop = false;
-        matchLogTextBox.Text = "Listening for window events...\r\n";
-        //
+        // 
         // HookForm
-        //
-        ClientSize = new Size(537, 311);
+        // 
+        ClientSize = new Size(698, 354);
         Controls.Add(matchLogTextBox);
         Controls.Add(exitButton);
         Name = "HookForm";
         ResumeLayout(false);
-        PerformLayout();
     }
 
     private System.Windows.Forms.Button exitButton = null!;
     private RoundedTextBox matchLogTextBox = null!;
-
 }

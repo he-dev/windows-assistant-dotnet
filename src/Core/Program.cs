@@ -1,7 +1,11 @@
-﻿using Microsoft.Extensions.Configuration;
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
+using Microsoft.Extensions.Configuration;
+using WindowsAssistant.Core.Views;
 
-namespace WindowsAssistant;
+using Serilog;
+using WindowsAssistant.Util.Serilog;
+
+namespace WindowsAssistant.Core;
 
 internal class Program
 {
@@ -23,16 +27,27 @@ internal class Program
                 .Get<IReadOnlyList<ObjectCreateOptions>>()
             ?? [];
 
-        Console.WriteLine("Listening for window events...");
-
         // meta: WinEvent hooks require a Windows message loop, which this form provides.
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
-        Application.Run(new HookForm(objectCreateOptions)
+        var hookForm = new HookForm(objectCreateOptions)
         {
             Visible = true,
             // StartPosition = FormStartPosition.CenterScreen // Does not work.
-        });
+        };
+
+        // meta: Configure logging once after the form has created its log control.
+        Log.Logger = new LoggerConfiguration().MinimumLevel.Debug().WriteTo.Sink(new TextBoxSink(hookForm.LogTextBox)).CreateLogger();
+
+        try
+        {
+            Log.Information("Listening for window events...");
+            Application.Run(hookForm);
+        }
+        finally
+        {
+            Log.CloseAndFlush();
+        }
     }
 }
 
@@ -49,10 +64,15 @@ public record ObjectCreateOptions
     /// </summary>
     public Regex TitleRegex
     {
-        get => field ??= new Regex(
-            TitlePattern,
-            RegexOptions.Compiled | RegexOptions.CultureInvariant,
-            TimeSpan.FromSeconds(1));
+        get
+        {
+            return field ??= new Regex
+            (
+                TitlePattern,
+                RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase,
+                TimeSpan.FromSeconds(1)
+            );
+        }
     }
 }
 
@@ -65,5 +85,6 @@ public record SizeFactorOptions
 public record SendKeysOptions
 (
     string Sequence,
-    string Description
+    string Description,
+    int? DelayMs = null
 );

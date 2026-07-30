@@ -1,7 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Drawing.Drawing2D;
 
-namespace WindowsAssistant;
+namespace WindowsAssistant.Core.Views;
 
 /// <summary>
 /// Read-only multiline text box with a rounded, anti-aliased border.
