@@ -5,6 +5,10 @@ using WindowsAssistant.Core.Views;
 using Serilog;
 using WindowsAssistant.Util.Serilog;
 
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Buzz = WindowsAssistant.Util.Buzz;
+
 namespace WindowsAssistant.Core;
 
 internal class Program
@@ -21,33 +25,24 @@ internal class Program
             .AddJsonFile("appsettings.json", optional: true)
             .Build();
 
-        var objectCreateOptions =
-            configuration
-                .GetSection("EVENT:OBJECT_CREATE")
-                .Get<IReadOnlyList<ObjectCreateOptions>>()
-            ?? [];
-
         // meta: WinEvent hooks require a Windows message loop, which this form provides.
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
-        var hookForm = new HookForm(objectCreateOptions)
-        {
-            Visible = true,
-            // StartPosition = FormStartPosition.CenterScreen // Does not work.
-        };
+        var observableLogSink = new ObservableLogSink();
+        var serilogLogger = new LoggerConfiguration().MinimumLevel.Debug().WriteTo.Sink(observableLogSink).CreateLogger();
+        var services = new ServiceCollection();
+        services.AddOptions<WindowEventOptions>().Bind(configuration.GetSection("EVENT"));
+        services.AddSingleton(observableLogSink);
+        services.AddLogging(logging => logging.ClearProviders().AddSerilog(serilogLogger, dispose: true));
+        services.AddSingleton<Buzz.MatchWindow>();
+        services.AddSingleton<Buzz.ResizeWindow>();
+        services.AddSingleton<Buzz.SendKeys>();
+        services.AddSingleton<HookForm>();
 
-        // meta: Configure logging once after the form has created its log control.
-        Log.Logger = new LoggerConfiguration().MinimumLevel.Debug().WriteTo.Sink(new TextBoxSink(hookForm.LogTextBox)).CreateLogger();
-
-        try
-        {
-            Log.Information("Listening for window events...");
-            Application.Run(hookForm);
-        }
-        finally
-        {
-            Log.CloseAndFlush();
-        }
+        using var serviceProvider = services.BuildServiceProvider();
+        var hookForm = serviceProvider.GetRequiredService<HookForm>();
+        serviceProvider.GetRequiredService<ILogger<Program>>().LogInformation("Listening for window events...");
+        Application.Run(hookForm);
     }
 }
 
@@ -74,6 +69,12 @@ public record ObjectCreateOptions
             );
         }
     }
+}
+
+public sealed class WindowEventOptions
+{
+    [ConfigurationKeyName("OBJECT_CREATE")]
+    public List<ObjectCreateOptions> ObjectCreate { get; init; } = [];
 }
 
 public record SizeFactorOptions

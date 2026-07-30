@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Drawing.Drawing2D;
+using WindowsAssistant.Util.Serilog;
 
 namespace WindowsAssistant.Core.Views;
 
@@ -10,7 +11,7 @@ namespace WindowsAssistant.Core.Views;
 /// A native WinForms <see cref="TextBox"/> only provides rectangular borders. This control hosts
 /// a borderless text box and draws the missing rounded border around it.
 /// </remarks>
-internal sealed class RoundedTextBox : UserControl
+internal sealed class RoundedTextBox : UserControl, ILogMessageObserver
 {
     // core: The native text box retains standard text selection, rendering, and append behavior.
     private readonly TextBox textBox = new()
@@ -47,10 +48,29 @@ internal sealed class RoundedTextBox : UserControl
         set => textBox.Text = value ?? string.Empty;
     }
 
-    public void AppendText(string text)
+    public void OnLogMessage(string message)
     {
-        // util: Expose only the operation needed by the match log.
-        textBox.AppendText(text);
+        // meta: The observer owns its UI-thread boundary so the observable remains UI-agnostic.
+        if (IsDisposed || Disposing)
+        {
+            return;
+        }
+
+        if (InvokeRequired)
+        {
+            try
+            {
+                BeginInvoke(new Action(() => OnLogMessage(message)));
+            }
+            catch (InvalidOperationException)
+            {
+                // util: The control lost its handle while the application was shutting down.
+            }
+        }
+        else
+        {
+            textBox.AppendText(message);
+        }
     }
 
     protected override void OnFontChanged(EventArgs e)

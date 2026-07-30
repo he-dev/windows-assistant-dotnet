@@ -1,7 +1,8 @@
-﻿using System.Runtime.InteropServices;
-using System.Text;
-using System.Text.RegularExpressions;
+﻿using Microsoft.Extensions.Logging;
 using WindowsAssistant.Meta;
+using WindowsAssistant.Util.Buzz;
+using WindowsAssistant.Util.Serilog;
+using Buzz = WindowsAssistant.Util.Buzz;
 
 namespace WindowsAssistant.Core.Views;
 
@@ -12,18 +13,26 @@ internal class HookForm : Form
 {
     private static IntPtr hook;
     private static Win32.WinEventDelegate procDelegate = null!; // This won't be null after the form loads.
-    private IReadOnlyList<ObjectCreateOptions> ObjectCreateOptions { get; } = [];
-    internal RoundedTextBox LogTextBox => matchLogTextBox;
+    private ILogger<HookForm> Logger { get; } = null!;
+    private Buzz.MatchWindow MatchWindow { get; } = null!;
+    private Buzz.ResizeWindow ResizeWindow { get; } = null!;
+    private Buzz.SendKeys SendKeys { get; } = null!;
+    private IDisposable? LogSubscription { get; set; }
 
+    // meta: Visual Studio's forms designer requires a parameterless constructor.
     public HookForm()
     {
         InitializeComponent();
     }
 
-    public HookForm(IEnumerable<ObjectCreateOptions> objectCreateOptions) : this()
+    public HookForm(ObservableLogSink observableLogSink, ILogger<HookForm> logger, Buzz.MatchWindow matchWindow, Buzz.ResizeWindow resizeWindow, Buzz.SendKeys sendKeys) : this()
     {
-        ObjectCreateOptions = objectCreateOptions.ToArray();
-        Text = "Window Assistant v1.1.0";
+        Logger = logger;
+        MatchWindow = matchWindow;
+        ResizeWindow = resizeWindow;
+        SendKeys = sendKeys;
+        LogSubscription = observableLogSink.Subscribe(matchLogTextBox);
+        Text = "Window Assistant v1.2.0";
         procDelegate = WinEventCallback;
         Load += HookForm_Load;
         //Shown += (_, _) => Hide(); // Hide the form after showing.
@@ -45,11 +54,11 @@ internal class HookForm : Form
 
         if (hook == IntPtr.Zero)
         {
-            Console.WriteLine("Failed to set OBJECT_CREATE hook.");
+            Logger.LogError("Window hook not installed.");
         }
         else
         {
-            Console.WriteLine("OBJECT_CREATE hook set.");
+            Logger.LogInformation("Window hook active.");
         }
     }
 
@@ -59,148 +68,25 @@ internal class HookForm : Form
         if (hook != IntPtr.Zero)
         {
             Win32.UnhookWinEvent(hook);
-            Console.WriteLine("OBJECT_CREATE hook removed.");
+            Logger.LogInformation("Window hook removed.");
             hook = IntPtr.Zero;
         }
 
+        LogSubscription?.Dispose();
         base.OnFormClosed(e);
     }
 
     private void WinEventCallback(IntPtr hWinEventHook, uint eventType, IntPtr hWnd, int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
     {
-        // core: Only native window creation events can represent configured targets.
-        if (hWnd == IntPtr.Zero || idObject != Win32.OBJID_WINDOW)
-        {
-            return;
-        }
-
-        // Get the window title
-        var title = new StringBuilder(256);
-        if (Win32.GetWindowText(hWnd, title, title.Capacity) == 0)
-        {
-            return;
-        }
-
-        //Console.WriteLine($"Detected window: {title}"); // for debugging
-
         // core: Apply the first configured rule whose title pattern matches.
-        if (FindMatchingRule(title.ToString()) is { } options)
+        if (MatchWindow.Execute(hWnd, idObject) is { } options)
         {
-            matchLogTextBox.AppendText($"{DateTime.Now:HH:mm:ss}  {title} -> {options.TitlePattern}{Environment.NewLine}");
-            Console.WriteLine($"Window created: {options.TitlePattern}");
-
-            ResizeWindow(hWnd, options.SizeFactor);
-            _ = SendKeysAsync(hWnd, options.SendKeys);
+            ResizeWindow.Execute(hWnd, options.SizeFactor.Width, options.SizeFactor.Height);
+            _ = SendKeys.ExecuteAsync(hWnd, options.SendKeys);
         }
     }
 
-    /// <summary>
-    /// Resizes the target window and centers it within its current monitor's working area.
-    /// </summary>
-    private static void ResizeWindow(IntPtr hWnd, SizeFactorOptions sizeFactor)
-    {
-        if (!Win32.GetWindowRect(hWnd, out var windowRect))
-        {
-            Console.WriteLine($"Failed to read window bounds. Win32 error: {Marshal.GetLastWin32Error()}.");
-            return;
-        }
-
-        // core: Resize using the independent width and height factors.
-        var newWidth = (int)(windowRect.Width * sizeFactor.Width);
-        var newHeight = (int)(windowRect.Height * sizeFactor.Height);
-
-        // core: Center relative to the monitor containing the target window.
-        var screenBounds = Screen.FromHandle(hWnd).WorkingArea;
-        var newX = screenBounds.Left + (screenBounds.Width - newWidth) / 2;
-        var newY = screenBounds.Top + (screenBounds.Height - newHeight) / 2;
-
-        if (Win32.SetWindowPos(hWnd, IntPtr.Zero, newX, newY, newWidth, newHeight, 0))
-        {
-            Console.WriteLine($"Window resized by X={sizeFactor.Width:0.0} and Y={sizeFactor.Height:0.0}.");
-        }
-        else
-        {
-            Console.WriteLine($"Failed to resize window. Win32 error: {Marshal.GetLastWin32Error()}.");
-        }
-    }
-
-    /// <summary>
-    /// Sends the configured key sequences after their optional delays.
-    /// </summary>
-    /// <remarks>
-    /// This method owns all delayed work so the native WinEvent callback remains synchronous.
-    /// It catches its own exceptions because the callback intentionally does not await it.
-    /// </remarks>
-    private static async Task SendKeysAsync(IntPtr hWnd, IEnumerable<SendKeysOptions>? sendKeysOptions)
-    {
-        try
-        {
-            foreach (var keys in sendKeysOptions ?? [])
-            {
-                // core: Give applications time to finish initializing the target window.
-                if (keys.DelayMs is > 0)
-                {
-                    await Task.Delay(keys.DelayMs.Value);
-                }
-
-                if (!Win32.IsWindow(hWnd))
-                {
-                    Console.WriteLine("Skipped configured keys because the window no longer exists.");
-                    return;
-                }
-
-                // core: Never inject input unless the intended window owns the foreground.
-                if (!Win32.SetForegroundWindow(hWnd) || Win32.GetForegroundWindow() != hWnd)
-                {
-                    Console.WriteLine("Skipped configured keys because the window could not be activated.");
-                    return;
-                }
-
-                System.Windows.Forms.SendKeys.SendWait(keys.Sequence);
-                Console.WriteLine(keys.Description);
-            }
-        }
-        catch (Exception exception)
-        {
-            Console.WriteLine($"Failed to send configured keys: {exception.Message}");
-        }
-    }
-
-    /// <summary>
-    /// Finds the first configured window rule whose compiled regular expression matches the
-    /// supplied window title.
-    /// </summary>
-    /// <remarks>
-    /// Matching is kept outside the native WinEvent callback's main flow so malformed patterns
-    /// and regex timeouts can be contained per rule. A bad pattern is logged and skipped instead
-    /// of terminating the callback or preventing later rules from being considered.
-    /// </remarks>
-    private ObjectCreateOptions? FindMatchingRule(string title)
-    {
-        // util: Rules retain configuration order, so the first successful match wins.
-        foreach (var options in ObjectCreateOptions)
-        {
-            try
-            {
-                if (options.TitleRegex.IsMatch(title))
-                {
-                    return options;
-                }
-            }
-            catch (RegexMatchTimeoutException)
-            {
-                Console.WriteLine($"Title pattern timed out: {options.TitlePattern}");
-            }
-            catch (ArgumentException exception)
-            {
-                Console.WriteLine($"Skipped invalid title pattern '{options.TitlePattern}': {exception.Message}");
-            }
-        }
-
-        return null;
-    }
-
-    private void button1_Click(object? sender, EventArgs e)
+    private void ExitButton_Click(object? sender, EventArgs e)
     {
         Close();
     }
@@ -225,7 +111,7 @@ internal class HookForm : Form
         exitButton.TabIndex = 0;
         exitButton.Text = "Exit";
         exitButton.UseVisualStyleBackColor = true;
-        exitButton.Click += button1_Click;
+        exitButton.Click += ExitButton_Click;
         // 
         // matchLogTextBox
         // 
