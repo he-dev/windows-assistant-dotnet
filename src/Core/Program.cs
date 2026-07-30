@@ -28,12 +28,13 @@ internal class Program
         // meta: WinEvent hooks require a Windows message loop, which this form provides.
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
+
         var observableLogSink = new ObservableLogSink();
-        var serilogLogger = new LoggerConfiguration().MinimumLevel.Debug().WriteTo.Sink(observableLogSink).CreateLogger();
+        var serilog = new LoggerConfiguration().MinimumLevel.Debug().WriteTo.Sink(observableLogSink).CreateLogger();
         var services = new ServiceCollection();
         services.AddOptions<WindowEventOptions>().Bind(configuration.GetSection("EVENT"));
         services.AddSingleton(observableLogSink);
-        services.AddLogging(logging => logging.ClearProviders().AddSerilog(serilogLogger, dispose: true));
+        services.AddLogging(logging => logging.ClearProviders().AddSerilog(serilog, dispose: true));
         services.AddSingleton<Buzz.MatchWindow>();
         services.AddSingleton<Buzz.ResizeWindow>();
         services.AddSingleton<Buzz.SendKeys>();

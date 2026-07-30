@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Globalization;
 using Serilog.Core;
 using Serilog.Events;
@@ -18,21 +19,19 @@ internal interface ILogMessageObservable
 /// <summary>
 /// Formats Serilog events as text and publishes them to subscribed observers.
 /// </summary>
-internal sealed class ObservableLogSink : ILogEventSink, ILogMessageObservable
+internal sealed class ObservableLogSink(string outputTemplate = ObservableLogSink.DefaultOutputTemplate) : ILogEventSink, ILogMessageObservable
 {
-    private readonly MessageTemplateTextFormatter formatter = new("[{Level:u1}] [{Timestamp:HH:mm:ss}] {Message:lj}{NewLine}{Exception}", CultureInfo.InvariantCulture);
-    private readonly List<ILogMessageObserver> observers = [];
+    private const string DefaultOutputTemplate = "[{Level:u1}] [{Timestamp:HH:mm:ss}] {Message:lj}{NewLine}{Exception}";
+
+    private readonly MessageTemplateTextFormatter formatter = new(outputTemplate, CultureInfo.InvariantCulture);
+    private readonly ConcurrentDictionary<ILogMessageObserver, byte> observers = [];
 
     /// <summary>
     /// Subscribes an observer until the returned subscription is disposed.
     /// </summary>
     public IDisposable Subscribe(ILogMessageObserver observer)
     {
-        lock (observers)
-        {
-            observers.Add(observer);
-        }
-
+        observers.TryAdd(observer, 0);
         return new Subscription(this, observer);
     }
 
@@ -42,14 +41,8 @@ internal sealed class ObservableLogSink : ILogEventSink, ILogMessageObservable
         formatter.Format(logEvent, writer);
         var message = writer.ToString();
 
-        ILogMessageObserver[] subscribers;
-        lock (observers)
-        {
-            subscribers = observers.ToArray();
-        }
-
-        // core: Publish a stable snapshot so observers may unsubscribe during notification.
-        foreach (var observer in subscribers)
+        // core: Concurrent enumeration allows observers to unsubscribe during notification.
+        foreach (var observer in observers.Keys)
         {
             observer.OnLogMessage(message, logEvent.Level);
         }
@@ -57,10 +50,7 @@ internal sealed class ObservableLogSink : ILogEventSink, ILogMessageObservable
 
     private void Unsubscribe(ILogMessageObserver observer)
     {
-        lock (observers)
-        {
-            observers.Remove(observer);
-        }
+        observers.TryRemove(observer, out _);
     }
 
     private sealed class Subscription(ObservableLogSink sink, ILogMessageObserver observer) : IDisposable
@@ -69,6 +59,7 @@ internal sealed class ObservableLogSink : ILogEventSink, ILogMessageObservable
 
         public void Dispose()
         {
+            // meta: Atomically clear the sink so repeated disposal unsubscribes this observer only once.
             Interlocked.Exchange(ref observable, null)?.Unsubscribe(observer);
         }
     }
