@@ -18,6 +18,7 @@ internal class HookForm : Form
     private Buzz.ResizeWindow ResizeWindow { get; } = null!;
     private Buzz.SendKeys SendKeys { get; } = null!;
     private IDisposable? LogSubscription { get; set; }
+    private CancellationTokenSource SendKeysCancellation { get; } = new();
 
     // meta: Visual Studio's forms designer requires a parameterless constructor.
     public HookForm()
@@ -25,13 +26,13 @@ internal class HookForm : Form
         InitializeComponent();
     }
 
-    public HookForm(ObservableLogSink observableLogSink, ILogger<HookForm> logger, Buzz.MatchWindow matchWindow, Buzz.ResizeWindow resizeWindow, Buzz.SendKeys sendKeys) : this()
+    public HookForm(ILogMessageObservable logMessages, ILogger<HookForm> logger, Buzz.MatchWindow matchWindow, Buzz.ResizeWindow resizeWindow, Buzz.SendKeys sendKeys) : this()
     {
         Logger = logger;
         MatchWindow = matchWindow;
         ResizeWindow = resizeWindow;
         SendKeys = sendKeys;
-        LogSubscription = observableLogSink.Subscribe(matchLogTextBox);
+        LogSubscription = logMessages.Subscribe(matchLogTextBox);
         Text = "Window Assistant v1.2.0";
         procDelegate = WinEventCallback;
         Load += HookForm_Load;
@@ -67,12 +68,21 @@ internal class HookForm : Form
         // meta: Release the native hook before the message loop disappears.
         if (hook != IntPtr.Zero)
         {
-            Win32.UnhookWinEvent(hook);
-            Logger.LogInformation("Window hook removed.");
+            if (Win32.UnhookWinEvent(hook))
+            {
+                Logger.LogInformation("Window hook removed.");
+            }
+            else
+            {
+                Logger.LogError("Window hook not removed.");
+            }
+
             hook = IntPtr.Zero;
         }
 
+        SendKeysCancellation.Cancel();
         LogSubscription?.Dispose();
+        SendKeysCancellation.Dispose();
         base.OnFormClosed(e);
     }
 
@@ -82,7 +92,7 @@ internal class HookForm : Form
         if (MatchWindow.FirstOrDefault(hWnd, idObject) is { } options)
         {
             ResizeWindow.By(hWnd, options.SizeFactor.Width, options.SizeFactor.Height);
-            _ = SendKeys.ExecuteAsync(hWnd, options.SendKeys);
+            _ = SendKeys.ExecuteAsync(hWnd, options.SendKeys, SendKeysCancellation.Token);
         }
     }
 

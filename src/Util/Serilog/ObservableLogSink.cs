@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Globalization;
 using Serilog.Core;
 using Serilog.Events;
@@ -24,14 +23,15 @@ internal sealed class ObservableLogSink(string outputTemplate = ObservableLogSin
     private const string DefaultOutputTemplate = "[{Level:u1}] [{Timestamp:HH:mm:ss}] {Message:lj}{NewLine}{Exception}";
 
     private readonly MessageTemplateTextFormatter formatter = new(outputTemplate, CultureInfo.InvariantCulture);
-    private readonly ConcurrentDictionary<ILogMessageObserver, byte> observers = [];
+    private ILogMessageObserver? observer;
 
     /// <summary>
     /// Subscribes an observer until the returned subscription is disposed.
     /// </summary>
     public IDisposable Subscribe(ILogMessageObserver observer)
     {
-        observers.TryAdd(observer, 0);
+        // meta: This application has one log target, so a new subscription replaces the previous observer.
+        Interlocked.Exchange(ref this.observer, observer);
         return new Subscription(this, observer);
     }
 
@@ -41,16 +41,12 @@ internal sealed class ObservableLogSink(string outputTemplate = ObservableLogSin
         formatter.Format(logEvent, writer);
         var message = writer.ToString();
 
-        // core: Concurrent enumeration allows observers to unsubscribe during notification.
-        foreach (var observer in observers.Keys)
-        {
-            observer.OnLogMessage(message, logEvent.Level);
-        }
+        Volatile.Read(ref observer)?.OnLogMessage(message, logEvent.Level);
     }
 
     private void Unsubscribe(ILogMessageObserver observer)
     {
-        observers.TryRemove(observer, out _);
+        Interlocked.CompareExchange(ref this.observer, null, observer);
     }
 
     private sealed class Subscription(ObservableLogSink sink, ILogMessageObserver observer) : IDisposable

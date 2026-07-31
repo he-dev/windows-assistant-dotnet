@@ -22,7 +22,7 @@ internal sealed class MatchWindow(ILogger<MatchWindow> logger, IOptions<WindowEv
             return null;
         }
 
-        var title = new StringBuilder(256);
+        var title = new StringBuilder(Win32.GetWindowTextLength(hWnd) + 1);
         if (Win32.GetWindowText(hWnd, title, title.Capacity) == 0)
         {
             return null;

@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Drawing.Drawing2D;
 using Serilog.Events;
+using WindowsAssistant.Util;
 using WindowsAssistant.Util.Serilog;
 
 namespace WindowsAssistant.Core.Views;
@@ -14,6 +15,8 @@ namespace WindowsAssistant.Core.Views;
 /// </remarks>
 internal sealed class RoundedTextBox : UserControl, ILogMessageObserver
 {
+    private const int MaximumLineCount = 100;
+
     // core: The native rich-text box retains text selection while allowing per-message colors.
     private readonly RichTextBox textBox = new()
     {
@@ -84,6 +87,7 @@ internal sealed class RoundedTextBox : UserControl, ILogMessageObserver
                 _ => Color.Black,
             };
             textBox.AppendText(message);
+            textBox.RemoveFirstLines(MaximumLineCount);
             textBox.SelectionStart = textBox.TextLength;
             textBox.SelectionColor = textBox.ForeColor;
 

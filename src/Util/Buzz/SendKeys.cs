@@ -11,36 +11,42 @@ internal sealed class SendKeys(ILogger<SendKeys> logger)
     /// <summary>
     /// Sends the sequence after an optional delay and returns whether it reached the intended foreground window.
     /// </summary>
-    public async Task<bool> ExecuteAsync(IntPtr hWnd, string sequence, int? delayMs = null)
+    public async Task<bool> ExecuteAsync(IntPtr hWnd, string sequence, string description, int? delayMs = null, CancellationToken cancellationToken = default)
     {
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             // util: Null, zero, and negative delay values mean immediate delivery.
             if (delayMs is > 0)
             {
-                await Task.Delay(delayMs.Value);
+                await Task.Delay(delayMs.Value, cancellationToken);
             }
 
             if (!Win32.IsWindow(hWnd))
             {
-                logger.LogWarning("Keys '{Sequence}' not sent. Window no longer exists.", sequence);
+                logger.LogWarning("Keys '{Description}' not sent. Window no longer exists.", description);
                 return false;
             }
 
             // core: Never inject input unless the intended window owns the foreground.
             if (!Win32.SetForegroundWindow(hWnd) || Win32.GetForegroundWindow() != hWnd)
             {
-                logger.LogWarning("Keys '{Sequence}' not sent. Window not active.", sequence);
+                logger.LogWarning("Keys '{Description}' not sent. Window not active.", description);
                 return false;
             }
 
             System.Windows.Forms.SendKeys.SendWait(sequence);
-            logger.LogInformation("Keys '{Sequence}' sent.", sequence);
+            logger.LogInformation("Keys '{Description}' sent.", description);
             return true;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return false;
         }
         catch (Exception exception)
         {
-            logger.LogError("Keys '{Sequence}' not sent. '{Error}'", sequence, exception.Message);
+            logger.LogError("Keys '{Description}' not sent. '{Error}'", description, exception.Message);
             return false;
         }
     }

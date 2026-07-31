@@ -33,7 +33,7 @@ internal class Program
         var serilog = new LoggerConfiguration().MinimumLevel.Debug().WriteTo.Sink(observableLogSink).CreateLogger();
         var services = new ServiceCollection();
         services.AddOptions<WindowEventOptions>().Bind(configuration.GetSection("EVENT"));
-        services.AddSingleton(observableLogSink);
+        services.AddSingleton<ILogMessageObservable>(observableLogSink);
         services.AddLogging(logging => logging.ClearProviders().AddSerilog(serilog, dispose: true));
         services.AddSingleton<Buzz.MatchWindow>();
         services.AddSingleton<Buzz.ResizeWindow>();

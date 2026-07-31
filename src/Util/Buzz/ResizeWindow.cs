@@ -18,7 +18,8 @@ internal sealed class ResizeWindow(ILogger<ResizeWindow> logger)
         // util: Keep Win32 sizing and monitor-coordinate calculations out of callers.
         if (!Win32.GetWindowRect(hWnd, out var windowRect))
         {
-            logger.LogWarning("Window not resized. Bounds unavailable.");
+            var error = new Win32Exception(Marshal.GetLastWin32Error());
+            logger.LogWarning("Window not resized. Bounds unavailable. '{Error}' Error code '{ErrorCode}'.", error.Message, error.NativeErrorCode);
             return false;
         }
 

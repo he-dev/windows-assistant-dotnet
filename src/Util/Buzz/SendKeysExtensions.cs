@@ -7,11 +7,11 @@ namespace WindowsAssistant.Util.Buzz;
 /// </summary>
 internal static class SendKeysExtensions
 {
-    public static async Task ExecuteAsync(this SendKeys sendKeys, IntPtr hWnd, IEnumerable<SendKeysOptions>? sendKeysOptions)
+    public static async Task ExecuteAsync(this SendKeys sendKeys, IntPtr hWnd, IEnumerable<SendKeysOptions>? sendKeysOptions, CancellationToken cancellationToken = default)
     {
         foreach (var keys in sendKeysOptions ?? [])
         {
-            if (!await sendKeys.ExecuteAsync(hWnd, keys.Sequence, keys.DelayMs))
+            if (!await sendKeys.ExecuteAsync(hWnd, keys.Sequence, keys.Description, keys.DelayMs, cancellationToken))
             {
                 break;
             }
