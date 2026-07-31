@@ -84,7 +84,11 @@ internal sealed class RoundedTextBox : UserControl, ILogMessageObserver
                 _ => Color.Black,
             };
             textBox.AppendText(message);
+            textBox.SelectionStart = textBox.TextLength;
             textBox.SelectionColor = textBox.ForeColor;
+
+            // core: Keep the latest message visible while the native scroll bars remain hidden.
+            textBox.ScrollToCaret();
         }
     }
 
